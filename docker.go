@@ -10,7 +10,6 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-
 )
 
 var (
@@ -40,6 +39,7 @@ func getAllDockersRunning() string {
 	}
 	return res
 }
+
 func createContainer(req RequestCreateContainer) error {
 
 	if !checkImageExist(req.ImageName) {
@@ -56,12 +56,12 @@ func createContainer(req RequestCreateContainer) error {
 		panic("Unable to get the port")
 	}
 
-	binding := fmt.Sprintf("%s\\%s:/laboratoire_name", BASE_FOLDER, req.FolderLocation)
+	binding := fmt.Sprintf("%s\\%s:/home/laboratoire_user", BASE_FOLDER, req.FolderLocation)
 	portBinding := nat.PortMap{containerPort: []nat.PortBinding{hostBinding}}
 	cont, err := cli.ContainerCreate(
 		context.Background(),
 		&container.Config{
-			Image: "nginx:latest",
+			Image: req.ImageName,
 		},
 		&container.HostConfig{
 			PortBindings: portBinding,

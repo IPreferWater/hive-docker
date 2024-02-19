@@ -1,8 +1,10 @@
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y vlc
+RUN apt-get update && \
+    apt-get install -y imagemagick
 
-# If you want a specific VLC version, specify it in the install command:
-# RUN apt-get update && apt-get install -y vlc=3.0.16
+RUN useradd -m laboratoire_user
 
-CMD ["vlc"] 
+USER laboratoire_user
+
+CMD ["convert","/home/laboratoire_user/duck.webp", "/home/laboratoire_user/wonderfull_duck.tif"]
