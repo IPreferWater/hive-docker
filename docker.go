@@ -4,45 +4,61 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 )
 
 var (
-	cli client.Client
+	dEngine *DockerEngine
 )
 
-const BASE_FOLDER = "C:\\Users\\clems\\Workspace\\laboratoire"
+type DockerEngine struct {
+	Cli *client.Client
+}
 
-func initCli() {
+type DockerCli interface {
+	getAllDockersRunning() (string, error)
+	createContainer() error
+}
+
+func initDockerEngine() error {
 	newCli, err := client.NewEnvClient()
 	if err != nil {
-		panic(err)
+		return err
 	}
-	cli = *newCli
+
+	dEngine = &DockerEngine{Cli: newCli}
+	return nil
 }
 
-func getAllDockersRunning() string {
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
+func (d DockerEngine) getAllDockersRunning() (string, error) {
+	containers, err := d.Cli.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
-	res := ""
+	var sb strings.Builder
+
 	for _, container := range containers {
-		new := fmt.Sprintf("%s %s\n", container.ID[:10], container.Image)
-		res = fmt.Sprintf("%s \n %s", res, new)
+		line := fmt.Sprintf("%s %s\n", container.ID[:10], container.Image)
+		sb.WriteString(line)
 	}
-	return res
+
+	return sb.String(), nil
 }
 
-func createContainer(req RequestCreateContainer) error {
+func (d DockerEngine) createContainer(req RequestCreateContainer) error {
 
-	if !checkImageExist(req.ImageName) {
+	isImageFound, err := checkImageExist(d.Cli, req.ImageName)
+	if err != nil {
+		return err
+	}
+	if !isImageFound {
 		errStr := fmt.Sprintf("image %s doesn't exist", req.ImageName)
 		return errors.New(errStr)
 	}
@@ -53,12 +69,15 @@ func createContainer(req RequestCreateContainer) error {
 	}
 	containerPort, err := nat.NewPort("tcp", "80")
 	if err != nil {
-		panic("Unable to get the port")
+		return err
 	}
 
-	binding := fmt.Sprintf("%s\\%s:/home/laboratoire_user", BASE_FOLDER, req.FolderLocation)
+	binding := fmt.Sprintf("%s:/home/laboratoire_user", req.FolderLocation)
 	portBinding := nat.PortMap{containerPort: []nat.PortBinding{hostBinding}}
-	cont, err := cli.ContainerCreate(
+	containerName := getContainerName(req.ContainerName)
+	fmt.Println(containerName)
+
+	cont, err := d.Cli.ContainerCreate(
 		context.Background(),
 		&container.Config{
 			Image: req.ImageName,
@@ -66,60 +85,42 @@ func createContainer(req RequestCreateContainer) error {
 		&container.HostConfig{
 			PortBindings: portBinding,
 			Binds:        []string{binding},
-		}, nil, "name_for_container")
+		}, nil, containerName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	cli.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
+	d.Cli.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
 
 	fmt.Printf("Container %s is started", cont.ID)
 	return nil
 
 }
 
-//postgres:10.16
-func checkImageExist(image string) bool {
+func getContainerName(s string) string {
+	if s == "" {
+		t := time.Now()
+		return t.Format("2006-01-0215-04-05")
+	}
+	return s
+}
 
-	// List all images locally
-	images, err := cli.ImageList(context.Background(), types.ImageListOptions{
-		//All:     false,
-		//Filters: filters.NewArgs().ExactMatch("yadokari"),
-	})
+func checkImageExist(cli *client.Client, image string) (bool, error) {
+
+	images, err := cli.ImageList(context.Background(), types.ImageListOptions{})
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	// Iterate through the list of images and check if the provided image exists
 	for _, img := range images {
 		for _, tag := range img.RepoTags {
 			if tag == image {
 				// Image found locally
 				fmt.Println("Image found locally:", image)
 				fmt.Println("Image ID:", img.ID)
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
-}
-
-func createVolume() {
-	m := make(map[string]string)
-	m["mount"] = "./test_folder"
-	//m["destination"] = "/app"
-	volumeBody := volume.VolumesCreateBody{
-		//	Driver:     "local",
-
-		Labels: m,
-		Name:   "test_volume",
-	}
-	volume, err := cli.VolumeCreate(context.Background(), volumeBody)
-
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("volume created %v", volume.Status)
-
+	return false, nil
 }

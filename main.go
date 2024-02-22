@@ -9,10 +9,13 @@ import (
 
 func main() {
 
-	initCli()
-	fmt.Println("docker cli OK")
-	r := gin.Default()
+	err := initDockerEngine()
 
+	if err != nil {
+	panic(err)
+	}
+
+	r := gin.Default()
 	r.POST("/docker/start", func(c *gin.Context) {
 		var requestBody RequestCreateContainer
 
@@ -21,7 +24,7 @@ func main() {
 			return
 		}
 
-		err := createContainer(requestBody)
+		err := dEngine.createContainer(requestBody)
 
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -33,11 +36,15 @@ func main() {
 
 	r.GET("/docker/runnings", func(c *gin.Context) {
 
-		c.JSON(http.StatusOK, gin.H{"runningContainers": getAllDockersRunning()})
+		allDocker, err := dEngine.getAllDockersRunning()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"runningContainers": allDocker})
 	})
 
-	// Run the server
 	port := 8080
-	fmt.Printf("Server is running on :%d\n", port)
-	r.Run(fmt.Sprintf(":%d", port))
+	r.Run(fmt.Sprintf("localhost:%d", port))
 }
